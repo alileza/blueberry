@@ -3,6 +3,7 @@ module github.com/alileza/potato
 go 1.12
 
 require (
+	github.com/oklog/run v1.0.0
 	github.com/urfave/cli v1.20.0
 	golang.org/x/crypto v0.0.0-20190506204251-e1dfcc566284 // indirect
 	golang.org/x/net v0.0.0-20190503192946-f4e77d36d62c // indirect
