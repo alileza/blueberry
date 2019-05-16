@@ -47,6 +47,7 @@ func (s *Storage) handler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+
 		err = json.NewEncoder(w).Encode(files)
 		if err != nil {
 			log.Println(err)

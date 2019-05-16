@@ -1,0 +1,14 @@
+version: '3.4'
+services:
+  potato1:
+    build: .
+    command: ["go", "run", ".", "agent"]
+
+  potato2:
+    build: .
+    command: ["go", "run", ".", "agent", "-join", "potato1:7946"]
+
+  potato3:
+    build: .
+    command: ["go", "run", ".", "agent", "-join", "potato2:7946"]
+
