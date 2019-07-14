@@ -1,47 +1,77 @@
 package agent
 
 import (
-	"errors"
+	"context"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"time"
+
+	consulapi "github.com/hashicorp/consul/api"
 )
 
-func (a *Agent) Fetch(eventID string) error {
-	var downloaded bool
-	potatoes, err := a.Consul.Agent().ServicesWithFilter("Service==" + a.Config.ServiceName)
+func (a *Agent) Fetch(ctx context.Context, eventID string) error {
+	agents, err := a.Consul.Agent().ServicesWithFilter("Service==" + a.Config.ServiceName)
 	if err != nil {
 		return err
 	}
 
-download:
-	for _, potato := range potatoes {
-		url := potato.Address + "/fetch?event_id=" + eventID
-		if err := downloadFile(url, a.getFilePath(eventID)); err != nil {
-			a.Config.Logger.Printf("[%s] Failed to download from %s : %v\n", eventID, url, err)
-			continue
+	for i := 0; i < 3; i++ {
+		for _, agent := range agents {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			req, err := http.NewRequest("GET", a.fetchURL(agent, eventID), nil)
+			if err != nil {
+				return err
+			}
+
+			if err := a.fetch(req.WithContext(ctx)); err != nil {
+				a.Config.Logger.Printf("[%s] Failed to fetch from %s : %v\n", eventID, agent.Address, err)
+				continue
+			}
+
+			a.Config.Logger.Printf("[%s] Fetched\n", eventID)
+			return nil
 		}
-		downloaded = true
-		a.Config.Logger.Printf("[%s] Downloaded\n", eventID)
+		time.Sleep(time.Second)
 	}
-	if !downloaded {
-		goto download
-	}
-	return nil
+
+	return fmt.Errorf("[%s] Giving up to fetch from all agents\n", eventID)
 }
 
-func downloadFile(url string, target string) error {
-	resp, err := http.Get(url)
+func (a *Agent) fetchURL(svc *consulapi.AgentService, eventID string) string {
+	u := &url.URL{
+		Scheme:   "http",
+		Host:     fmt.Sprintf("%s:%d", svc.Address, svc.Port),
+		Path:     "fetch",
+		RawQuery: "event_id=" + eventID,
+	}
+
+	return u.String()
+}
+
+func (a *Agent) fetch(req *http.Request) error {
+	resp, err := a.Config.ClientHTTP.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return errors.New("Service unavailable")
+		return fmt.Errorf("Service unavailable : %d", resp.StatusCode)
 	}
 
-	out, err := os.Create(target)
+	filepath := a.getFilePath(
+		req.URL.Query().Get("event_id"),
+	)
+
+	out, err := os.Create(filepath)
 	if err != nil {
 		return err
 	}

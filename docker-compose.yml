@@ -7,30 +7,25 @@ services:
   potato1:
     hostname: potato1
     build: .
-    command: ["server"]
+    ports:
+      - 8001:6000
+    command: ["agent"]
     depends_on:
       - consul
   potato2:
     hostname: potato2
     build: .
-    command: ["server"]
+    command: ["agent"]
+    ports:
+      - 8002:6000
     depends_on:
       - consul
   potato3:
     hostname: potato3
     build: .
-    command: ["server"]
+    command: ["agent"]
+    ports:
+      - 8003:6000
     depends_on:
       - consul
-  potato4:
-    hostname: potato4
-    build: .
-    command: ["server"]
-    depends_on:
-      - consul
-  potato4:
-    hostname: potato4
-    build: .
-    command: ["server"]
-    depends_on:
-      - consul
+ 

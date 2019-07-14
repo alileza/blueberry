@@ -1,24 +1,41 @@
 package agent
 
 import (
+	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-func (a *Agent) startServer() error {
+func (a *Agent) startServer(ctx context.Context) error {
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", a.listHandler())
 	mux.HandleFunc("/fetch", a.fetchHandler())
 	mux.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
+
 	srv := &http.Server{
-		Addr:    fmt.Sprintf("0.0.0.0:%d", a.Config.ServerPort),
-		Handler: mux,
+		Addr:     fmt.Sprintf("%s:%d", a.Config.ServerAddress, a.Config.ServerPort),
+		Handler:  mux,
+		ErrorLog: a.Config.Logger,
 	}
 
-	return srv.ListenAndServe()
+	errChan := make(chan error)
+	go func() {
+		errChan <- srv.ListenAndServe()
+	}()
+
+	select {
+	case e := <-errChan:
+		return e
+	case <-ctx.Done():
+		return srv.Shutdown(ctx)
+	}
 }
 
 func (a *Agent) fetchHandler() http.HandlerFunc {
@@ -39,6 +56,31 @@ func (a *Agent) fetchHandler() http.HandlerFunc {
 
 		time.Sleep(time.Second)
 
-		http.ServeFile(w, r, a.getFilePath(r.FormValue("event_id")))
+		filepath := a.getFilePath(r.FormValue("event_id"))
+
+		_, err := os.Stat(filepath)
+		if os.IsNotExist(err) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		http.ServeFile(w, r, filepath)
+	})
+}
+
+func (a *Agent) listHandler() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		files, err := ioutil.ReadDir(a.Config.ServerStoragePath)
+		if err != nil {
+			fmt.Fprintf(w, err.Error())
+			return
+		}
+		for _, file := range files {
+			fmt.Fprintf(w, "%s\t%s\n", file.ModTime().Format(time.RFC3339), file.Name())
+		}
 	})
 }

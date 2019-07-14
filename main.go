@@ -10,7 +10,7 @@ import (
 
 func main() {
 	consulConf := consulapi.DefaultConfig()
-	consulConf.Address = "localhost:8500"
+	consulConf.Address = "consul:8500"
 
 	conf := agent.DefaultConfig()
 	conf.ConsulConfig = consulConf
